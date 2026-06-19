@@ -1,0 +1,16 @@
+{
+  "name": "kyurt-booking-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "KYURT full-stack booking app for event electronics rentals.",
+  "scripts": {
+    "install:all": "npm install --prefix server && npm install --prefix client",
+    "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "server": "npm run dev --prefix server",
+    "client": "npm run dev --prefix client",
+    "build": "npm run build --prefix client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}
