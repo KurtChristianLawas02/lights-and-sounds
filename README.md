@@ -53,6 +53,22 @@ Frontend: http://localhost:5173
 
 Backend API: http://localhost:5000/api
 
+For ngrok demos, set the server to listen on all interfaces and allow your tunnel origins:
+
+```env
+# server/.env
+PORT=5001
+HOST=0.0.0.0
+CLIENT_URL=https://your-frontend.ngrok-free.app
+```
+
+Then point the frontend at the backend tunnel:
+
+```env
+# client/.env
+VITE_API_URL=https://your-backend.ngrok-free.app/api
+```
+
 ## Demo Accounts
 
 The schema seeds these accounts:

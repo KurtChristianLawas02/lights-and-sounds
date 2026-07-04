@@ -4,11 +4,26 @@ import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
 
-router.post('/', requireAuth, requireAdmin, async (req, res, next) => {
+router.post('/', requireAuth, async (req, res, next) => {
   try {
     const { booking_id, amount, method, reference_number, status } = req.body;
-    if (!booking_id || !amount) {
-      return res.status(400).json({ message: 'Booking and amount are required.' });
+    if (!booking_id) {
+      return res.status(400).json({ message: 'Booking is required.' });
+    }
+
+    const bookings = await query('SELECT id, user_id, total_amount FROM bookings WHERE id = :booking_id', { booking_id });
+    const booking = bookings[0];
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found.' });
+    }
+    if (req.user.role !== 'admin' && Number(booking.user_id) !== Number(req.user.id)) {
+      return res.status(403).json({ message: 'Not allowed.' });
+    }
+
+    const paymentStatus = req.user.role === 'admin' ? (status || 'Submitted') : 'Submitted';
+    const paymentAmount = req.user.role === 'admin' ? amount : booking.total_amount;
+    if (!paymentAmount) {
+      return res.status(400).json({ message: 'Payment amount is required.' });
     }
 
     const result = await query(
@@ -16,14 +31,14 @@ router.post('/', requireAuth, requireAdmin, async (req, res, next) => {
        VALUES (:booking_id, :amount, :method, :reference_number, :status, CASE WHEN :status = 'Verified' THEN NOW() ELSE NULL END)`,
       {
         booking_id,
-        amount,
+        amount: paymentAmount,
         method: method || 'Manual',
         reference_number: reference_number || null,
-        status: status || 'Submitted'
+        status: paymentStatus
       }
     );
 
-    if (status === 'Verified') {
+    if (paymentStatus === 'Verified') {
       await query('UPDATE bookings SET status = "Paid" WHERE id = :booking_id', { booking_id });
     }
 
@@ -62,4 +77,3 @@ router.patch('/:id', requireAuth, requireAdmin, async (req, res, next) => {
 });
 
 export default router;
-

@@ -18,6 +18,13 @@ router.get('/summary', async (req, res, next) => {
     const statuses = await query('SELECT status, COUNT(*) AS count FROM bookings GROUP BY status ORDER BY status');
     const products = await query('SELECT COUNT(*) AS total_products FROM products WHERE is_active = TRUE');
     const customers = await query('SELECT COUNT(*) AS total_customers FROM users WHERE role = "customer"');
+    const [notifications] = await query(
+      `SELECT
+        COALESCE(SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END), 0) AS pending_bookings,
+        COALESCE(SUM(CASE WHEN status IN ('Paid', 'Completed') THEN 1 ELSE 0 END), 0) AS reportable_bookings,
+        COALESCE(SUM(CASE WHEN start_datetime >= NOW() AND status IN ('Pending', 'Approved', 'Paid') THEN 1 ELSE 0 END), 0) AS upcoming_calendar
+       FROM bookings`
+    );
 
     res.json({
       summary: {
@@ -25,6 +32,7 @@ router.get('/summary', async (req, res, next) => {
         total_products: products[0].total_products,
         total_customers: customers[0].total_customers
       },
+      notifications,
       statuses
     });
   } catch (error) {

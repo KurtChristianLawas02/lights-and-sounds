@@ -16,11 +16,41 @@ import { ensureSchema } from './db.js';
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 5000;
+const port = Number(process.env.PORT || 5000);
+const host = process.env.HOST || '0.0.0.0';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173,http://127.0.0.1:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+
+  return allowedOrigins.some((allowedOrigin) => {
+    if (allowedOrigin === '*') return true;
+
+    if (allowedOrigin.includes('*')) {
+      const escaped = allowedOrigin.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+      return new RegExp(`^${escaped}$`).test(origin);
+    }
+
+    return origin === allowedOrigin;
+  });
+};
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
+app.use(cors({
+  origin: (origin, callback) => {
+    if (isAllowedOrigin(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(null, false);
+  },
+  credentials: true
+}));
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan('dev'));
@@ -49,8 +79,8 @@ app.use((error, req, res, next) => {
 
 ensureSchema()
   .then(() => {
-    app.listen(port, () => {
-      console.log(`KYURT API running on http://localhost:${port}`);
+    app.listen(port, host, () => {
+      console.log(`KYURT API running on http://${host}:${port}`);
     });
   })
   .catch((error) => {

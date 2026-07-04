@@ -33,6 +33,11 @@ import { useCart } from './state/CartContext.jsx';
 const defaultCategories = ['Sound Systems', 'LED Walls', 'Lights', 'Microphones', 'Projectors', 'Speakers'];
 const statuses = ['Pending', 'Approved', 'Rejected', 'Paid', 'Completed', 'Cancelled'];
 const deliveryStatuses = ['Preparing', 'Out for Delivery', 'Delivered'];
+const paymentOptions = [
+  { value: 'GCash', label: 'GCash', detail: 'Scan the GCash QR and send the payment reference with your booking.' },
+  { value: 'Bank Transfer', label: 'Bank transfer', detail: 'Scan the bank QR and send the transaction reference with your booking.' },
+  { value: 'On-hand Payment', label: 'On-hand payment', detail: 'Pay directly to the KYURT team during delivery or setup.' }
+];
 
 function peso(value) {
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0));
@@ -92,6 +97,46 @@ function DeliveryBadge({ status }) {
   return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${deliveryStatusClass(status)}`}>{status || 'Preparing'}</span>;
 }
 
+function NotificationBadge({ count }) {
+  const value = Number(count || 0);
+  if (!value) return null;
+  return <span className="ml-2 inline-grid min-w-5 place-items-center rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-black leading-none text-white">{value > 99 ? '99+' : value}</span>;
+}
+
+function PaymentQrPreview({ method, total }) {
+  const online = method === 'GCash' || method === 'Bank Transfer';
+  const seed = method.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const cells = Array.from({ length: 49 }, (_, index) => {
+    const row = Math.floor(index / 7);
+    const col = index % 7;
+    const finder = (row < 2 && col < 2) || (row < 2 && col > 4) || (row > 4 && col < 2);
+    return finder || ((index * 17 + seed) % 5 < 2);
+  });
+
+  if (!online) {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+        On-hand payment selected. No QR code is needed.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="flex items-center gap-4">
+        <div className="grid h-28 w-28 shrink-0 grid-cols-7 gap-1 rounded-md border border-slate-200 bg-white p-2">
+          {cells.map((active, index) => <span key={index} className={active ? 'rounded-[1px] bg-ink' : 'rounded-[1px] bg-white'} />)}
+        </div>
+        <div>
+          <p className="text-sm font-black text-ink">{method} QR</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">Amount due: <strong>{peso(total)}</strong></p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">Enter your reference number after payment so admin can verify it.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DeliveryTracker({ status }) {
   const current = deliveryStatuses.indexOf(status || 'Preparing');
   return (
@@ -145,6 +190,25 @@ function Layout({ page, setPage }) {
   const { user, logout } = useAuth();
   const { items } = useCart();
   const [open, setOpen] = useState(false);
+  const [adminNotifications, setAdminNotifications] = useState({});
+
+  useEffect(() => {
+    if (user?.role !== 'admin') {
+      setAdminNotifications({});
+      return undefined;
+    }
+
+    let active = true;
+    api('/reports/summary')
+      .then((data) => {
+        if (active) setAdminNotifications(data.notifications || {});
+      })
+      .catch(console.error);
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
   const customerNav = [
     ['home', 'Home'],
     ['browse', 'Browse'],
@@ -152,11 +216,11 @@ function Layout({ page, setPage }) {
     ['dashboard', 'My Bookings']
   ];
   const adminNav = [
-    ['admin', 'Dashboard'],
+    ['admin', 'Dashboard', 0],
     ['admin-products', 'Products'],
-    ['admin-bookings', 'Bookings'],
-    ['admin-reports', 'Reports'],
-    ['admin-calendar', 'Calendar']
+    ['admin-bookings', 'Bookings', adminNotifications.pending_bookings],
+    ['admin-reports', 'Reports', adminNotifications.reportable_bookings],
+    ['admin-calendar', 'Calendar', adminNotifications.upcoming_calendar]
   ];
   const nav = user?.role === 'admin' ? adminNav : customerNav;
 
@@ -171,9 +235,10 @@ function Layout({ page, setPage }) {
           </span>
         </button>
         <nav className="hidden items-center gap-1 lg:flex">
-          {nav.map(([key, label]) => (
+          {nav.map(([key, label, count]) => (
             <button key={key} onClick={() => setPage(key)} className={`rounded-md px-3 py-2 text-sm font-semibold transition ${page === key ? 'bg-white text-navy' : 'text-cyan-50 hover:bg-white/10'}`}>
               {label}
+              <NotificationBadge count={count} />
             </button>
           ))}
         </nav>
@@ -191,8 +256,11 @@ function Layout({ page, setPage }) {
       </div>
       {open && (
         <div className="border-t border-white/10 px-4 py-3 lg:hidden">
-          {nav.map(([key, label]) => (
-            <button key={key} onClick={() => { setPage(key); setOpen(false); }} className="block w-full rounded-md px-3 py-2 text-left text-sm font-semibold hover:bg-white/10">{label}</button>
+          {nav.map(([key, label, count]) => (
+            <button key={key} onClick={() => { setPage(key); setOpen(false); }} className="block w-full rounded-md px-3 py-2 text-left text-sm font-semibold hover:bg-white/10">
+              {label}
+              <NotificationBadge count={count} />
+            </button>
           ))}
           {user ? <button className="mt-2 block w-full rounded-md px-3 py-2 text-left text-sm font-semibold hover:bg-white/10" onClick={logout}>Logout</button> : <button className="mt-2 block w-full rounded-md px-3 py-2 text-left text-sm font-semibold hover:bg-white/10" onClick={() => setPage('login')}>Login</button>}
         </div>
@@ -440,6 +508,8 @@ function CartPage({ setPage }) {
     delivery_location: '',
     setup_needed: true,
     technician_needed: false,
+    payment_method: 'GCash',
+    reference_number: '',
     notes: ''
   });
   const [message, setMessage] = useState('');
@@ -460,15 +530,23 @@ function CartPage({ setPage }) {
     }
 
     try {
-      await api('/bookings', {
+      const booking = await api('/bookings', {
         method: 'POST',
         body: {
           ...form,
           items: items.map((item) => ({ product_id: item.product.id, quantity: item.quantity }))
         }
       });
+      await api('/payments', {
+        method: 'POST',
+        body: {
+          booking_id: booking.id,
+          method: form.payment_method,
+          reference_number: form.reference_number
+        }
+      });
       clearCart();
-      setMessage('Booking submitted. Your request is now pending admin approval.');
+      setMessage('Booking submitted. Your payment selection is now pending admin verification.');
       setPage('dashboard');
     } catch (error) {
       setMessage(error.message);
@@ -503,6 +581,19 @@ function CartPage({ setPage }) {
           <label className="text-sm font-semibold text-slate-700">Delivery location<input className="input mt-1" value={form.delivery_location} onChange={(event) => update('delivery_location', event.target.value)} placeholder="Venue address" /></label>
           <label className="flex items-center gap-3 text-sm font-semibold text-slate-700"><input type="checkbox" checked={form.setup_needed} onChange={(event) => update('setup_needed', event.target.checked)} /> Setup needed</label>
           <label className="flex items-center gap-3 text-sm font-semibold text-slate-700"><input type="checkbox" checked={form.technician_needed} onChange={(event) => update('technician_needed', event.target.checked)} /> Technician needed</label>
+          <label className="text-sm font-semibold text-slate-700">
+            Payment method
+            <select className="input mt-1" value={form.payment_method} onChange={(event) => update('payment_method', event.target.value)}>
+              {paymentOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <PaymentQrPreview method={form.payment_method} total={total} />
+          {form.payment_method !== 'On-hand Payment' && (
+            <input className="input" value={form.reference_number} onChange={(event) => update('reference_number', event.target.value)} placeholder="Payment reference number" />
+          )}
+          <p className="rounded-lg bg-cyan-50 p-3 text-xs leading-5 text-ink">
+            {paymentOptions.find((option) => option.value === form.payment_method)?.detail}
+          </p>
           <textarea className="input min-h-24" value={form.notes} onChange={(event) => update('notes', event.target.value)} placeholder="Notes for the KYURT team" />
         </div>
         <div className="mt-5 space-y-2 border-t border-slate-200 pt-4 text-sm">
@@ -657,7 +748,7 @@ function CustomerDashboard() {
   );
 }
 
-function AdminDashboard() {
+function AdminDashboard({ setPage }) {
   const [data, setData] = useState(null);
   useEffect(() => {
     api('/reports/summary').then(setData).catch(console.error);
@@ -667,6 +758,11 @@ function AdminDashboard() {
     ['Bookings', data?.summary?.total_bookings || 0, ClipboardList],
     ['Products', data?.summary?.total_products || 0, Package],
     ['Customers', data?.summary?.total_customers || 0, User]
+  ];
+  const notifications = [
+    ['Bookings', data?.notifications?.pending_bookings || 0, 'Pending bookings need review', 'admin-bookings'],
+    ['Reports', data?.notifications?.reportable_bookings || 0, 'Paid or completed bookings in reports', 'admin-reports'],
+    ['Calendar', data?.notifications?.upcoming_calendar || 0, 'Upcoming active scheduled bookings', 'admin-calendar']
   ];
   return (
     <main className="mx-auto max-w-7xl px-4 py-10">
@@ -678,6 +774,17 @@ function AdminDashboard() {
             <p className="mt-4 text-sm text-slate-500">{label}</p>
             <p className="text-2xl font-black text-ink">{value}</p>
           </div>
+        ))}
+      </div>
+      <div className="mt-6 grid gap-4 md:grid-cols-3">
+        {notifications.map(([label, value, detail, target]) => (
+          <button key={label} className="panel flex items-center justify-between gap-4 p-5 text-left transition hover:-translate-y-1 hover:shadow-glow" onClick={() => setPage(target)}>
+            <div>
+              <p className="text-sm font-black uppercase tracking-wide text-cyan-600">{label}</p>
+              <p className="mt-1 text-sm text-slate-600">{detail}</p>
+            </div>
+            <span className="grid h-12 min-w-12 place-items-center rounded-full bg-rose-100 px-3 text-xl font-black text-rose-700">{value}</span>
+          </button>
         ))}
       </div>
       <div className="panel mt-6 p-5">
@@ -1113,7 +1220,7 @@ export default function App() {
     if (page === 'cart') return <CartPage setPage={setPage} />;
     if (page === 'login') return <LoginPage setPage={setPage} />;
     if (page === 'dashboard') return user ? <CustomerDashboard /> : <LoginPage setPage={setPage} />;
-    if (page === 'admin') return user?.role === 'admin' ? <AdminDashboard /> : <LoginPage setPage={setPage} />;
+    if (page === 'admin') return user?.role === 'admin' ? <AdminDashboard setPage={setPage} /> : <LoginPage setPage={setPage} />;
     if (page === 'admin-products') return user?.role === 'admin' ? <AdminProducts /> : <LoginPage setPage={setPage} />;
     if (page === 'admin-bookings') return user?.role === 'admin' ? <AdminBookings /> : <LoginPage setPage={setPage} />;
     if (page === 'admin-reports') return user?.role === 'admin' ? <AdminReports /> : <LoginPage setPage={setPage} />;
