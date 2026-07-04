@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build:client",
+  "outputDirectory": "client/dist",
+  "framework": "vite",
+  "regions": ["sfo1"],
+  "env": {
+    "VITE_API_URL": "@vite_api_url"
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://your-backend-url.vercel.app/api/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "functions": {
+    "api/**": {
+      "runtime": "nodejs18.x"
+    }
+  }
+}
